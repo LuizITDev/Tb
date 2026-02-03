@@ -34,7 +34,38 @@ function cpfJaVotou($arquivo, $cpf) {
 
         $partes = explode(';', $linha);
         $cpfLinha = isset($partes[0]) ? preg_replace('/\D/', '', $partes[0]) : '';
-        if ($cpfLinha === $cpf) {
+        if ($cpfLinha === $cpf && $cpf !== '') {
+            $ja = true;
+            break;
+        }
+    }
+    fclose($fh);
+    return $ja;
+}
+
+/**
+ * Verifica se uma turma já votou (linhas com CPF vazio e nome "TURMA: <turma>").
+ */
+function turmaJaVotou($arquivo, $turma) {
+    $turma = trim($turma);
+    if ($turma === '') return false;
+    if (!file_exists($arquivo)) return false;
+
+    $fh = fopen($arquivo, 'r');
+    if (!$fh) return false;
+
+    $alvo = 'TURMA: ' . $turma;
+    $ja = false;
+
+    while (($linha = fgets($fh)) !== false) {
+        $linha = trim($linha);
+        if ($linha === '') continue;
+
+        $partes = explode(';', $linha);
+        $cpfLinha  = isset($partes[0]) ? preg_replace('/\D/', '', $partes[0]) : '';
+        $nomeLinha = isset($partes[1]) ? trim($partes[1]) : '';
+
+        if ($cpfLinha === '' && strcasecmp($nomeLinha, $alvo) === 0) {
             $ja = true;
             break;
         }
@@ -56,14 +87,13 @@ function registrarVoto($arquivo, $cpf, $nome, $opcao) {
 
 /**
  * Garante que a pessoa esteja presente no arquivo de pessoas (dados.txt)
- * no formato "nome;cpf" com CPF normalizado (11 dígitos).
- * Não duplica entradas com o mesmo CPF.
+ * no formato "nome;cpf" com CPF normalizado (11 dígitos). Não duplica por CPF.
  */
 function registrarPessoaSeNaoExiste($arquivoPessoas, $nome, $cpf) {
     $nome = trim($nome);
     $cpf  = normalizarCPF($cpf);
 
-    if ($nome === '') return false;
+    if ($nome === '' || $cpf === '') return false;
     if (!file_exists($arquivoPessoas)) {
         // cria o arquivo vazio
         @file_put_contents($arquivoPessoas, '');
@@ -79,7 +109,7 @@ function registrarPessoaSeNaoExiste($arquivoPessoas, $nome, $cpf) {
 
             $partes = explode(';', $linha);
             $cpfLinha = isset($partes[1]) ? preg_replace('/\D/', '', $partes[1]) : '';
-            if ($cpf !== '' && $cpfLinha === $cpf) {
+            if ($cpfLinha === $cpf) {
                 $existe = true;
                 break;
             }
@@ -88,8 +118,8 @@ function registrarPessoaSeNaoExiste($arquivoPessoas, $nome, $cpf) {
     }
 
     if (!$existe) {
-        // Grava como "nome;cpf" (se não houver CPF, grava só o nome)
-        $linha = $cpf !== '' ? ($nome . ';' . $cpf . PHP_EOL) : ($nome . PHP_EOL);
+        // Grava como "nome;cpf"
+        $linha = $nome . ';' . $cpf . PHP_EOL;
         $ok = @file_put_contents($arquivoPessoas, $linha, FILE_APPEND | LOCK_EX);
         return $ok !== false;
     }
@@ -101,32 +131,54 @@ $msg = '';
 $erro = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $nome  = isset($_POST['nome'])  ? trim($_POST['nome'])  : '';
-    $cpf   = isset($_POST['cpf'])   ? $_POST['cpf']         : '';
-    $opcao = isset($_POST['opcao']) ? trim($_POST['opcao']) : '';
+    $tipo  = isset($_POST['tipo'])  ? $_POST['tipo']          : 'pessoa'; // 'pessoa' | 'turma'
+    $nome  = isset($_POST['nome'])  ? trim($_POST['nome'])    : '';
+    $turma = isset($_POST['turma']) ? trim($_POST['turma'])   : '';
+    $cpf   = isset($_POST['cpf'])   ? $_POST['cpf']           : '';
+    $opcao = isset($_POST['opcao']) ? trim($_POST['opcao'])   : '';
 
     $cpfNum = normalizarCPF($cpf);
 
-    if ($nome === '') {
-        $erro = 'Informe o nome.';
-    } elseif ($cpfNum === '') {
-        $erro = 'Informe o CPF.';
-    } elseif (!validarCPF($cpfNum)) {
-        $erro = 'CPF inválido.';
-    } elseif ($opcao === '') {
+    if ($opcao === '') {
         $erro = 'Selecione uma opção de voto.';
-    } elseif (cpfJaVotou($ARQ_VOTOS, $cpfNum)) {
-        $erro = 'Este CPF já votou. Voto duplicado não é permitido.';
-    } else {
-        // 1) registra o voto
-        if (registrarVoto($ARQ_VOTOS, $cpfNum, $nome, $opcao)) {
-            // 2) garante a presença na lista (dados.txt)
-            registrarPessoaSeNaoExiste($ARQ_PESSOA, $nome, $cpfNum);
-
-            $msg = 'Voto registrado com sucesso!';
+    } elseif ($tipo === 'pessoa') {
+        if ($nome === '') {
+            $erro = 'Informe o nome.';
+        } elseif ($cpfNum === '') {
+            $erro = 'Informe o CPF.';
+        } elseif (!validarCPF($cpfNum)) {
+            $erro = 'CPF inválido.';
+        } elseif (cpfJaVotou($ARQ_VOTOS, $cpfNum)) {
+            $erro = 'Este CPF já votou. Voto duplicado não é permitido.';
         } else {
-            $erro = 'Não foi possível registrar o voto. Verifique permissões da pasta/arquivo.';
+            // Nome exibido com a turma (se houver)
+            $nomeExibicao = $turma !== '' ? ($nome . ' [Turma: ' . $turma . ']') : $nome;
+
+            if (registrarVoto($ARQ_VOTOS, $cpfNum, $nomeExibicao, $opcao)) {
+                // cadastra pessoa (nome;cpf) na lista, mantendo compatibilidade com listar.php
+                registrarPessoaSeNaoExiste($ARQ_PESSOA, $nome, $cpfNum);
+                $msg = 'Voto registrado com sucesso!';
+            } else {
+                $erro = 'Não foi possível registrar o voto. Verifique permissões da pasta/arquivo.';
+            }
         }
+    } elseif ($tipo === 'turma') {
+        if ($turma === '') {
+            $erro = 'Informe a turma.';
+        } elseif (turmaJaVotou($ARQ_VOTOS, $turma)) {
+            $erro = 'Esta turma já votou. Voto duplicado não é permitido.';
+        } else {
+            // Para turma: CPF vazio e "nome" no padrão "TURMA: <nome>"
+            $nomeExibicao = 'TURMA: ' . $turma;
+
+            if (registrarVoto($ARQ_VOTOS, '', $nomeExibicao, $opcao)) {
+                $msg = 'Voto da turma registrado com sucesso!';
+            } else {
+                $erro = 'Não foi possível registrar o voto da turma. Verifique permissões da pasta/arquivo.';
+            }
+        }
+    } else {
+        $erro = 'Tipo de voto inválido.';
     }
 }
 ?>
@@ -136,15 +188,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta charset="UTF-8">
 <title>Votação</title>
 <style>
-  body { font-family: Arial, sans-serif; max-width: 720px; margin: 32px auto; }
+  body { font-family: Arial, sans-serif; max-width: 760px; margin: 32px auto; }
   .msg { color: #0a7; margin: 8px 0; }
   .erro { color: #c00; margin: 8px 0; }
   form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
   label { display: grid; gap: 6px; }
   input[type="text"], select { padding: 8px; }
   .full { grid-column: 1 / -1; }
+  .row { grid-column: 1 / -1; display: flex; gap: 16px; align-items: center; }
+  fieldset { border: 1px solid #ddd; padding: 10px; border-radius: 6px; grid-column: 1 / -1; }
+  legend { padding: 0 6px; }
   button { padding: 10px 14px; }
-  .link { margin-top: 16px; display: inline-block; }
+  .links { margin-top: 16px; display: flex; gap: 10px; }
+  small.hint { color: #555; }
 </style>
 </head>
 <body>
@@ -159,13 +215,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <?php endif; ?>
 
 <form method="post" action="">
+  <fieldset>
+    <legend>Tipo de voto</legend>
+    <div class="row">
+      <label><input type="radio" name="tipo" value="pessoa" checked> Pessoa</label>
+      <label><input type="radio" name="tipo" value="turma"> Turma (sem CPF)</label>
+    </div>
+  </fieldset>
+
   <label>
-    Nome
-    <input type="text" name="nome" placeholder="Digite o nome completo" required>
+    Nome (pessoa)
+    <input type="text" name="nome" placeholder="Digite o nome completo">
   </label>
 
   <label>
-    CPF
+    Turma
+    <input type="text" name="turma" placeholder="Ex.: 1º DS - Manhã">
+  </label>
+
+  <label>
+    CPF (pessoa)
     <input
       type="text"
       name="cpf"
@@ -173,8 +242,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       inputmode="numeric"
       pattern="^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$"
       title="Digite um CPF no formato 000.000.000-00"
-      required
     >
+    <small class="hint">Para voto por turma, deixe em branco.</small>
   </label>
 
   <label class="full">
@@ -190,8 +259,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <div class="full">
     <button type="submit">Votar</button>
   </div>
+
+  <div class="links">
+    <a href="listar.php">Ir para a lista</a>
+    <a href="resultado.php">Ver resultados</a>
+    <a href="index.php">Voltar</a>
+  </div>
 </form>
 
-<p><a href="listar.php">Ir para a lista</a> | <a href="index.php">Voltar</a></p>
+<script>
+// Alterna obrigatoriedade dos campos de acordo com o tipo de voto
+(function(){
+  const radios = document.querySelectorAll('input[name="tipo"]');
+  const nome = document.querySelector('input[name="nome"]');
+  const turma = document.querySelector('input[name="turma"]');
+  const cpf = document.querySelector('input[name="cpf"]');
+
+  function toggleCampos() {
+    const tipo = document.querySelector('input[name="tipo"]:checked').value;
+    if (tipo === 'pessoa') {
+      nome.required = true;
+      cpf.required = true;
+      turma.required = false; // opcional para pessoa
+    } else {
+      nome.required = false;
+      cpf.required = false;
+      turma.required = true;  // obrigatório para turma
+    }
+  }
+  radios.forEach(r => r.addEventListener('change', toggleCampos));
+  toggleCampos();
+})();
+</script>
+
 </body>
 </html>
