@@ -1,124 +1,197 @@
 <?php
-// (Opcional, útil no dev)
+// (Opcional em dev)
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-$ARQ_PESSOAS = __DIR__ . '/dados.txt'; // linhas: nome;cpf
-$ARQ_VOTOS   = __DIR__ . '/votos.txt'; // linhas: cpf;nome;opcao;timestamp
+$ARQ_VOTOS  = __DIR__ . '/votos.txt';
+$ARQ_PESSOA = __DIR__ . '/dados.txt';
 
-// Lê pessoas (nome;cpf)
-$pessoas = [];
-if (file_exists($ARQ_PESSOAS)) {
-    $linhas = file($ARQ_PESSOAS, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    foreach ($linhas as $linha) {
-        $partes = array_map('trim', explode(';', $linha));
-        $nome = $partes[0] ?? '';
-        $cpf  = preg_replace('/\D/', '', ($partes[1] ?? '')); // normaliza
+// ------------------ Funções auxiliares ------------------
+function normalizarCPF($cpf) {
+    return preg_replace('/\D/', '', $cpf);
+}
 
-        if ($nome !== '' && $cpf !== '') {
-            $pessoas[] = ['nome' => $nome, 'cpf' => $cpf];
+/**
+ * Opção B: aceita qualquer CPF com 11 dígitos (sem DV, sem bloqueio de sequências repetidas).
+ */
+function validarCPF($cpf) {
+    $cpf = normalizarCPF($cpf);
+    return strlen($cpf) === 11;
+}
+
+function cpfJaVotou($arquivo, $cpf) {
+    $cpf = normalizarCPF($cpf);
+    if (!file_exists($arquivo)) return false;
+
+    $fh = fopen($arquivo, 'r');
+    if (!$fh) return false;
+
+    $ja = false;
+    while (($linha = fgets($fh)) !== false) {
+        $linha = trim($linha);
+        if ($linha === '') continue;
+
+        $partes = explode(';', $linha);
+        $cpfLinha = isset($partes[0]) ? preg_replace('/\D/', '', $partes[0]) : '';
+        if ($cpfLinha === $cpf) {
+            $ja = true;
+            break;
+        }
+    }
+    fclose($fh);
+    return $ja;
+}
+
+function registrarVoto($arquivo, $cpf, $nome, $opcao) {
+    $cpf = normalizarCPF($cpf);
+    $nome = trim($nome);
+    $opcao = trim($opcao);
+    $timestamp = date('Y-m-d H:i:s');
+
+    $linha = $cpf . ';' . $nome . ';' . $opcao . ';' . $timestamp . PHP_EOL;
+    $ok = @file_put_contents($arquivo, $linha, FILE_APPEND | LOCK_EX);
+    return $ok !== false;
+}
+
+/**
+ * Garante que a pessoa esteja presente no arquivo de pessoas (dados.txt)
+ * no formato "nome;cpf" com CPF normalizado (11 dígitos).
+ * Não duplica entradas com o mesmo CPF.
+ */
+function registrarPessoaSeNaoExiste($arquivoPessoas, $nome, $cpf) {
+    $nome = trim($nome);
+    $cpf  = normalizarCPF($cpf);
+
+    if ($nome === '') return false;
+    if (!file_exists($arquivoPessoas)) {
+        // cria o arquivo vazio
+        @file_put_contents($arquivoPessoas, '');
+    }
+
+    // Percorre o arquivo para ver se já existe o CPF cadastrado
+    $existe = false;
+    $fh = @fopen($arquivoPessoas, 'r');
+    if ($fh) {
+        while (($linha = fgets($fh)) !== false) {
+            $linha = trim($linha);
+            if ($linha === '') continue;
+
+            $partes = explode(';', $linha);
+            $cpfLinha = isset($partes[1]) ? preg_replace('/\D/', '', $partes[1]) : '';
+            if ($cpf !== '' && $cpfLinha === $cpf) {
+                $existe = true;
+                break;
+            }
+        }
+        fclose($fh);
+    }
+
+    if (!$existe) {
+        // Grava como "nome;cpf" (se não houver CPF, grava só o nome)
+        $linha = $cpf !== '' ? ($nome . ';' . $cpf . PHP_EOL) : ($nome . PHP_EOL);
+        $ok = @file_put_contents($arquivoPessoas, $linha, FILE_APPEND | LOCK_EX);
+        return $ok !== false;
+    }
+    return true;
+}
+
+// ------------------ Controle da página ------------------
+$msg = '';
+$erro = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $nome  = isset($_POST['nome'])  ? trim($_POST['nome'])  : '';
+    $cpf   = isset($_POST['cpf'])   ? $_POST['cpf']         : '';
+    $opcao = isset($_POST['opcao']) ? trim($_POST['opcao']) : '';
+
+    $cpfNum = normalizarCPF($cpf);
+
+    if ($nome === '') {
+        $erro = 'Informe o nome.';
+    } elseif ($cpfNum === '') {
+        $erro = 'Informe o CPF.';
+    } elseif (!validarCPF($cpfNum)) {
+        $erro = 'CPF inválido.';
+    } elseif ($opcao === '') {
+        $erro = 'Selecione uma opção de voto.';
+    } elseif (cpfJaVotou($ARQ_VOTOS, $cpfNum)) {
+        $erro = 'Este CPF já votou. Voto duplicado não é permitido.';
+    } else {
+        // 1) registra o voto
+        if (registrarVoto($ARQ_VOTOS, $cpfNum, $nome, $opcao)) {
+            // 2) garante a presença na lista (dados.txt)
+            registrarPessoaSeNaoExiste($ARQ_PESSOA, $nome, $cpfNum);
+
+            $msg = 'Voto registrado com sucesso!';
+        } else {
+            $erro = 'Não foi possível registrar o voto. Verifique permissões da pasta/arquivo.';
         }
     }
 }
-
-// Monta um conjunto (hash) de CPFs que já votaram
-$cpfsQueVotaram = [];
-if (file_exists($ARQ_VOTOS)) {
-    $linhasVotos = file($ARQ_VOTOS, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    foreach ($linhasVotos as $linha) {
-        $partes = array_map('trim', explode(';', $linha));
-        $cpfVoto = preg_replace('/\D/', '', ($partes[0] ?? ''));
-        if ($cpfVoto !== '') {
-            $cpfsQueVotaram[$cpfVoto] = true;
-        }
-    }
-}
-
-// Filtro por nome ou CPF (opcional)
-$filtro = isset($_GET['q']) ? trim($_GET['q']) : '';
-if ($filtro !== '') {
-    $needle = mb_strtolower(preg_replace('/\D/', '', $filtro)) ?: mb_strtolower($filtro);
-    $pessoas = array_filter($pessoas, function($p) use ($needle) {
-        $nome = mb_strtolower($p['nome']);
-        $cpf  = $p['cpf'];
-        return str_contains($nome, $needle) || str_contains($cpf, preg_replace('/\D/', '', $needle));
-    });
-}
-
-// Função pra formatar CPF (###.###.###-##)
-function cpfMask($cpf) {
-    $cpf = preg_replace('/\D/', '', $cpf);
-    if (strlen($cpf) !== 11) return $cpf;
-    return substr($cpf,0,3).'.'.substr($cpf,3,3).'.'.substr($cpf,6,3).'-'.substr($cpf,9,2);
-}
-
-// Ordena por nome (opcional)
-usort($pessoas, fn($a,$b) => strcasecmp($a['nome'], $b['nome']));
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Listar Nomes</title>
+<title>Votação</title>
 <style>
-  body { font-family: Arial, sans-serif; max-width: 900px; margin: 32px auto; }
-  h2 { margin-bottom: 8px; }
-  form.filtro { margin: 12px 0 20px; display: flex; gap: 8px; }
-  input[type="text"] { padding: 8px; flex: 1; }
-  button { padding: 8px 12px; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-  th { background: #f6f6f6; }
-  .ok { color: #0a7; font-weight: bold; }
-  .pend { color: #c00; font-weight: bold; }
-  .small { color: #555; font-size: 12px; }
+  body { font-family: Arial, sans-serif; max-width: 720px; margin: 32px auto; }
+  .msg { color: #0a7; margin: 8px 0; }
+  .erro { color: #c00; margin: 8px 0; }
+  form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+  label { display: grid; gap: 6px; }
+  input[type="text"], select { padding: 8px; }
+  .full { grid-column: 1 / -1; }
+  button { padding: 10px 14px; }
+  .link { margin-top: 16px; display: inline-block; }
 </style>
 </head>
 <body>
+<h2>Votação</h2>
 
-<h2>Lista de Pessoas (Nome + CPF + Status de Voto)</h2>
-p class="small">Fonte: <code>dados.txt</code> e <code>votos.txt</code>. Use a busca para filtrar por nome ou CPF.</p>
+<?php if ($msg): ?>
+  <div class="msg"><?= htmlspecialchars($msg, ENT_QUOTES, 'UTF-8') ?></div>
+<?php endif; ?>
 
-<form class="filtro" method="get" action="">
-  <input type="text" name="q" placeholder="Buscar por nome ou CPF" value="<?= htmlspecialchars($filtro, ENT_QUOTES, 'UTF-8') ?>">
-  <button type="submit">Buscar</button>
-  index.phpVoltar</a>
+<?php if ($erro): ?>
+  <div class="erro"><?= htmlspecialchars($erro, ENT_QUOTES, 'UTF-8') ?></div>
+<?php endif; ?>
+
+<form method="post" action="">
+  <label>
+    Nome
+    <input type="text" name="nome" placeholder="Digite o nome completo" required>
+  </label>
+
+  <label>
+    CPF
+    <input
+      type="text"
+      name="cpf"
+      placeholder="000.000.000-00"
+      inputmode="numeric"
+      pattern="^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$"
+      title="Digite um CPF no formato 000.000.000-00"
+      required
+    >
+  </label>
+
+  <label class="full">
+    Sua opção de voto
+    <select name="opcao" required>
+      <option value="">-- selecione --</option>
+      <option value="OPCAO_A">Opção A</option>
+      <option value="OPCAO_B">Opção B</option>
+      <option value="OPCAO_C">Opção C</option>
+    </select>
+  </label>
+
+  <div class="full">
+    <button type="submit">Votar</button>
+  </div>
 </form>
 
-<table>
-  <thead>
-    <tr>
-      <th>#</th>
-      <th>Nome</th>
-      <th>CPF</th>
-      <th>Status de Voto</th>
-    </tr>
-  </thead>
-  <tbody>
-    <?php if (empty($pessoas)): ?>
-      <tr><td colspan="4">Nenhuma pessoa encontrada.</td></tr>
-    <?php else: ?>
-      <?php $i = 1; foreach ($pessoas as $p): 
-        $cpf = $p['cpf'];
-        $jaVotou = isset($cpfsQueVotaram[$cpf]);
-      ?>
-        <tr>
-          <td><?= $i++ ?></td>
-          <td><?= htmlspecialchars($p['nome'], ENT_QUOTES, 'UTF-8') ?></td>
-          <td><?= htmlspecialchars(cpfMask($cpf), ENT_QUOTES, 'UTF-8') ?></td>
-          <td>
-            <?php if ($jaVotou): ?>
-              span class="ok">Já votou</span>
-            <?php else: ?>
-              span class="pend">Não votou</span>
-            <?php endif; ?>
-          </td>
-        </tr>
-      <?php endforeach; ?>
-    <?php endif; ?>
-  </tbody>
-</table>
-
+<p><a href="listar.php">Ir para a lista</a> | <a href="index.php">Voltar</a></p>
 </body>
 </html>
