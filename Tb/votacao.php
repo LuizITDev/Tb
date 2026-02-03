@@ -6,6 +6,7 @@ error_reporting(E_ALL);
 
 $ARQ_VOTOS  = __DIR__ . '/votos.txt';
 $ARQ_PESSOA = __DIR__ . '/dados.txt';
+$ARQ_TURMAS = __DIR__ . '/turmas.txt';
 
 // ------------------ Funções auxiliares ------------------
 function normalizarCPF($cpf) {
@@ -126,6 +127,43 @@ function registrarPessoaSeNaoExiste($arquivoPessoas, $nome, $cpf) {
     return true;
 }
 
+/**
+ * Garante que a turma esteja presente no arquivo de turmas (turmas.txt)
+ * no formato uma turma por linha. Não duplica por turma (case-insensitive).
+ */
+function registrarTurmaSeNaoExiste($arquivoTurmas, $turma) {
+    $turma = trim($turma);
+    if ($turma === '') return false;
+
+    if (!file_exists($arquivoTurmas)) {
+        // cria o arquivo vazio
+        @file_put_contents($arquivoTurmas, '');
+    }
+
+    // Verifica se já existe (case-insensitive)
+    $existe = false;
+    $fh = @fopen($arquivoTurmas, 'r');
+    if ($fh) {
+        while (($linha = fgets($fh)) !== false) {
+            $linha = trim($linha);
+            if ($linha === '') continue;
+            if (strcasecmp($linha, $turma) === 0) {
+                $existe = true;
+                break;
+            }
+        }
+        fclose($fh);
+    }
+
+    if (!$existe) {
+        // Grava como "turma"
+        $linha = $turma . PHP_EOL;
+        $ok = @file_put_contents($arquivoTurmas, $linha, FILE_APPEND | LOCK_EX);
+        return $ok !== false;
+    }
+    return true;
+}
+
 // ------------------ Controle da página ------------------
 $msg = '';
 $erro = '';
@@ -172,6 +210,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $nomeExibicao = 'TURMA: ' . $turma;
 
             if (registrarVoto($ARQ_VOTOS, '', $nomeExibicao, $opcao)) {
+                // cadastra turma na lista, mantendo compatibilidade com listar.php
+                registrarTurmaSeNaoExiste($ARQ_TURMAS, $turma);
                 $msg = 'Voto da turma registrado com sucesso!';
             } else {
                 $erro = 'Não foi possível registrar o voto da turma. Verifique permissões da pasta/arquivo.';
@@ -188,7 +228,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta charset="UTF-8">
 <title>Votação</title>
 <style>
-  body { font-family: Arial, sans-serif; max-width: 760px; margin: 32px auto; }
+  body { 
+    font-family: Arial, sans-serif; 
+    max-width: 760px; 
+    margin: 32px auto; 
+    background: url('https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExaHV5eDR6Y3BjMHJzaG5jaXlwNnhnZ3d0bHZwNnoyZDRwOWdicDJ0dSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/dXLnSpMDt7CvzRwMa9/giphy.gif') fixed;
+    background-size: 50vw 50vh;
+    background-repeat: no-repeat;
+    background-position: center;
+    font-weight: bold;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
   .msg { color: #0a7; margin: 8px 0; }
   .erro { color: #c00; margin: 8px 0; }
   form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
@@ -262,8 +314,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   <div class="links">
     <a href="listar.php">Ir para a lista</a>
-    <a href="resultado.php">Ver resultados</a>
-    <a href="index.php">Voltar</a>
+    <a href="resultados_completos.php">Ver resultados completos</a>
+    <a href="index.html">Voltar</a>
   </div>
 </form>
 

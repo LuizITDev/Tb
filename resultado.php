@@ -10,7 +10,19 @@ $linhas = $tem ? count(file($ARQ, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES)
 <meta charset="UTF-8">
 <title>Resultados - Teste</title>
 <style>
-  body { font-family: Arial, sans-serif; max-width: 720px; margin: 32px auto; }
+  body { 
+    font-family: Arial, sans-serif; 
+    max-width: 720px; 
+    margin: 32px auto; 
+    background: url('https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExaHV5eDR6Y3BjMHJzaG5jaXlwNnhnZ3d0bHZwNnoyZDRwOWdicDJ0dSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/dXLnSpMDt7CvzRwMa9/giphy.gif') fixed;
+    background-size: 50vw 50vh;
+    background-repeat: no-repeat;
+    background-position: center;
+    font-weight: bold;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
   .muted { color: #777; }
 </style>
 </head>

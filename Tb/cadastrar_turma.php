@@ -74,7 +74,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta charset="UTF-8">
 <title>Cadastrar Turma</title>
 <style>
-  body { font-family: Arial, sans-serif; max-width: 720px; margin: 32px auto; }
+  body { 
+    font-family: Arial, sans-serif; 
+    max-width: 720px; 
+    margin: 32px auto; 
+    background: url('https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExaHV5eDR6Y3BjMHJzaG5jaXlwNnhnZ3d0bHZwNnoyZDRwOWdicDJ0dSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/dXLnSpMDt7CvzRwMa9/giphy.gif') fixed;
+    background-size: 50vw 50vh;
+    background-repeat: no-repeat;
+    background-position: center;
+    font-weight: bold;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
   h2 { margin-bottom: 8px; }
   .msg { color: #0a7; margin: 8px 0; }
   .erro { color: #c00; margin: 8px 0; }
@@ -103,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <button type="submit">Cadastrar</button>
 </form>
 
-<p class="link"><a href="index.php">Voltar</a></p>
+<p class="link"><a href="index.html">Voltar</a></p>
 
 <hr>
 

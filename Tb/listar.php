@@ -110,7 +110,19 @@ if ($ARQ_TURMAS && file_exists($ARQ_TURMAS)) {
 <meta charset="UTF-8">
 <title>Listagem - Pessoas e Turmas</title>
 <style>
-  body { font-family: Arial, sans-serif; max-width: 1000px; margin: 32px auto; }
+  body { 
+    font-family: Arial, sans-serif; 
+    max-width: 1000px; 
+    margin: 32px auto; 
+    background: url('https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExaHV5eDR6Y3BjMHJzaG5jaXlwNnhnZ3d0bHZwNnoyZDRwOWdicDJ0dSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/dXLnSpMDt7CvzRwMa9/giphy.gif') fixed;
+    background-size: 50vw 50vh;
+    background-repeat: no-repeat;
+    background-position: center;
+    font-weight: bold;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
   h2 { margin: 24px 0 8px; }
   .small { color: #555; font-size: 12px; margin: 4px 0 16px; }
   form.filtro { margin: 12px 0 20px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -132,9 +144,9 @@ if ($ARQ_TURMAS && file_exists($ARQ_TURMAS)) {
   <input type="text" name="q" placeholder="Buscar por nome, CPF ou turma" value="<?= htmlspecialchars($filtro, ENT_QUOTES, 'UTF-8') ?>">
   <button type="submit">Buscar</button>
   <div class="links">
-    <a href="index.php">Voltar</a>
+    <a href="index.html">Voltar</a>
     <a href="votacao.php">Ir para votação</a>
-    <a href="resultado.php">Ver resultados</a>
+    <a href="resultados_completos.php">Ver resultados completos</a>
   </div>
 </form>
 
